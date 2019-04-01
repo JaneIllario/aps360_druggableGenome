@@ -8,15 +8,20 @@ import tensorfieldnetworks.utils as utils
 FLOAT_TYPE = tf.float32
 EPSILON = 1e-8
 
+
+
+
+
 def atom_type_to_one_hot(atom_numbers, atom_order):
     one_hot_dict = {atom_type: [1 if i == j else 0 for i in range(len(atom_order))]
                     for j, atom_type in enumerate(atom_order)}
     return list(map(lambda x: one_hot_dict[x], atom_numbers))
 
 
-training_set_size = 1000
+training_set_size = 500
 
-with connect('data/qm9.db') as conn:
+
+with connect('qm9.db') as conn:
     qm9_coords = []
     qm9_atoms = []
     qm9_test_coords = []
@@ -66,12 +71,18 @@ with tf.variable_scope(None, 'embed', values=[one_hot]):
 
 # LAYERS 1-3
 num_layers = len(layer_dims) - 1
-for layer in range(2):
+for layer in range(num_layers):
     layer_dim = layer_dims[layer + 1]
     with tf.variable_scope(None, 'layer' + str(layer), values=[input_tensor_list]):
         input_tensor_list = layers.convolution(input_tensor_list, rbf, unit_vectors)
         input_tensor_list = layers.concatenation(input_tensor_list)
-        
+        if layer == num_layers - 1:
+            with tf.variable_scope(None, 'atom_types', values=[input_tensor_list[0]]):
+                atom_type_list = layers.self_interaction({0: input_tensor_list[0]}, num_atom_types)
+        input_tensor_list = layers.self_interaction(input_tensor_list, layer_dim)
+        if layer < num_layers - 1:
+            with tf.variable_scope(None, 'nonlinearity', values=[input_tensor_list]):
+                input_tensor_list = layers.nonlinearity(input_tensor_list, nonlin=utils.ssp)
 
 probabilty_scalars = input_tensor_list[0][0]
 missing_coordinates = input_tensor_list[1][0]
@@ -117,8 +128,8 @@ saver = tf.train.Saver(max_to_keep=None)
 #saver.restore(sess, "missing_point_checkpoints/qm9_model_200.ckpt")
 
 epochs = 1000
-print_freq = 25
-save_freq = 25
+print_freq = 1
+save_freq = 1
 
 print("Training model.")
 
